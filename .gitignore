@@ -1,0 +1,16 @@
+# Claude Design handoff bundle — source material, not part of the deployed site
+nc26-poster/
+
+# Reference video (large, not deployed)
+nc26_active_invitation.mp4
+
+# Claude Code local settings
+.claude/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Vercel
+.vercel/

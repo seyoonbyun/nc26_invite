@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NC26 · Video Invitation v2 (Kraft)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;800;900&family=Gowun+Dodum&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html, body { margin: 0; padding: 0; background: #0a0a0a; height: 100%; overflow: hidden; }
+      #root { position: fixed; inset: 0; }
+      * { box-sizing: border-box; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
+    <script type="text/babel" data-presets="react">
+// ═══════════════════════════════════════════════════════════════════════════
+// animations.jsx — Stage / Timeline / Sprite / easing helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+const Easing = {
+  linear: (t) => t,
+  easeInQuad:    (t) => t * t,
+  easeOutQuad:   (t) => t * (2 - t),
+  easeInOutQuad: (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
+  easeInCubic:    (t) => t * t * t,
+  easeOutCubic:   (t) => (--t) * t * t + 1,
+  easeInOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1),
+  easeInQuart:    (t) => t * t * t * t,
+  easeOutQuart:   (t) => 1 - (--t) * t * t * t,
+  easeInOutQuart: (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t),
+  easeInExpo:  (t) => (t === 0 ? 0 : Math.pow(2, 10 * (t - 1))),
+  easeOutExpo: (t) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t)),
+  easeInOutExpo: (t) => {
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    if (t < 0.5) return 0.5 * Math.pow(2, 20 * t - 10);
+    return 1 - 0.5 * Math.pow(2, -20 * t + 10);
+  },
+  easeInSine:    (t) => 1 - Math.cos((t * Math.PI) / 2),
+  easeOutSine:   (t) => Math.sin((t * Math.PI) / 2),
+  easeInOutSine: (t) => -(Math.cos(Math.PI * t) - 1) / 2,
+  easeOutBack: (t) => {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  },
+  easeInBack: (t) => {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return c3 * t * t * t - c1 * t * t;
+  },
+  easeInOutBack: (t) => {
+    const c1 = 1.70158, c2 = c1 * 1.525;
+    return t < 0.5
+      ? (Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2
+      : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+  },
+  easeOutElastic: (t) => {
+    const c4 = (2 * Math.PI) / 3;
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+  },
+};
+
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+function interpolate(input, output, ease = Easing.linear) {
+  return (t) => {
+    if (t <= input[0]) return output[0];
+    if (t >= input[input.length - 1]) return output[output.length - 1];
+    for (let i = 0; i < input.length - 1; i++) {
+      if (t >= input[i] && t <= input[i + 1]) {
+        const span = input[i + 1] - input[i];
+        const local = span === 0 ? 0 : (t - input[i]) / span;
+        const easeFn = Array.isArray(ease) ? (ease[i] || Easing.linear) : ease;
+        const eased = easeFn(local);
+        return output[i] + (output[i + 1] - output[i]) * eased;
+      }
+    }
+    return output[output.length - 1];
+  };
+}
+
+function animate({ from = 0, to = 1, start = 0, end = 1, ease = Easing.easeInOutCubic }) {
+  return (t) => {
+    if (t <= start) return from;
+    if (t >= end) return to;
+    const local = (t - start) / (end - start);
+    return from + (to - from) * ease(local);
+  };
+}
+
+const TimelineContext = React.createContext({ time: 0, duration: 10, playing: false });
+const useTime = () => React.useContext(TimelineContext).time;
+const useTimeline = () => React.useContext(TimelineContext);
+
+const SpriteContext = React.createContext({ localTime: 0, progress: 0, duration: 0 });
+const useSprite = () => React.useContext(SpriteContext);
+
+function Sprite({ start = 0, end = Infinity, children, keepMounted = false }) {
+  const { time } = useTimeline();
+  const visible = time >= start && time <= end;
+  if (!visible && !keepMounted) return null;
+
+  const duration = end - start;
+  const localTime = Math.max(0, time - start);
+  const progress = duration > 0 && isFinite(duration)
+    ? clamp(localTime / duration, 0, 1)
+    : 0;
+
+  const value = { localTime, progress, duration, visible };
+
+  return (
+    <SpriteContext.Provider value={value}>
+      {typeof children === 'function' ? children(value) : children}
+    </SpriteContext.Provider>
+  );
+}
+
+function Stage({
+  width = 1280,
+  height = 720,
+  duration = 10,
+  background = '#f6f4ef',
+  fps = 60,
+  loop = true,
+  autoplay = true,
+  persistKey = 'animstage',
+  children,
+}) {
+  const [time, setTime] = React.useState(() => {
+    try {
+      const v = parseFloat(localStorage.getItem(persistKey + ':t') || '0');
+      return isFinite(v) ? clamp(v, 0, duration) : 0;
+    } catch { return 0; }
+  });
+  const [playing, setPlaying] = React.useState(autoplay);
+  const [hoverTime, setHoverTime] = React.useState(null);
+  const [scale, setScale] = React.useState(1);
+
+  const stageRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
+  const rafRef = React.useRef(null);
+  const lastTsRef = React.useRef(null);
+
+  React.useEffect(() => {
+    try { localStorage.setItem(persistKey + ':t', String(time)); } catch {}
+  }, [time, persistKey]);
+
+  React.useEffect(() => {
+    if (!stageRef.current) return;
+    const el = stageRef.current;
+    const measure = () => {
+      const barH = 44;
+      const s = Math.min(
+        el.clientWidth / width,
+        (el.clientHeight - barH) / height
+      );
+      setScale(Math.max(0.05, s));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [width, height]);
+
+  React.useEffect(() => {
+    if (!playing) {
+      lastTsRef.current = null;
+      return;
+    }
+    const step = (ts) => {
+      if (lastTsRef.current == null) lastTsRef.current = ts;
+      const dt = (ts - lastTsRef.current) / 1000;
+      lastTsRef.current = ts;
+      setTime((t) => {
+        let next = t + dt;
+        if (next >= duration) {
+          if (loop) next = next % duration;
+          else { next = duration; setPlaying(false); }
+        }
+        return next;
+      });
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      lastTsRef.current = null;
+    };
+  }, [playing, duration, loop]);
+
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setPlaying(p => !p);
+      } else if (e.code === 'ArrowLeft') {
+        setTime(t => clamp(t - (e.shiftKey ? 1 : 0.1), 0, duration));
+      } else if (e.code === 'ArrowRight') {
+        setTime(t => clamp(t + (e.shiftKey ? 1 : 0.1), 0, duration));
+      } else if (e.key === '0' || e.code === 'Home') {
+        setTime(0);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [duration]);
+
+  const displayTime = hoverTime != null ? hoverTime : time;
+
+  const ctxValue = React.useMemo(
+    () => ({ time: displayTime, duration, playing, setTime, setPlaying }),
+    [displayTime, duration, playing]
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center',
+        background: '#0a0a0a',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      <div style={{
+        flex: 1,
+        width: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}>
+        <div
+          ref={canvasRef}
+          style={{
+            width, height,
+            background,
+            position: 'relative',
+            transform: `scale(${scale})`,
+            transformOrigin: 'center',
+            flexShrink: 0,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+            overflow: 'hidden',
+          }}
+        >
+          <TimelineContext.Provider value={ctxValue}>
+            {children}
+          </TimelineContext.Provider>
+        </div>
+      </div>
+
+      <PlaybackBar
+        time={displayTime}
+        actualTime={time}
+        duration={duration}
+        playing={playing}
+        onPlayPause={() => setPlaying(p => !p)}
+        onReset={() => { setTime(0); }}
+        onSeek={(t) => setTime(t)}
+        onHover={(t) => setHoverTime(t)}
+      />
+    </div>
+  );
+}
+
+function PlaybackBar({ time, duration, playing, onPlayPause, onReset, onSeek, onHover }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+
+  const timeFromEvent = React.useCallback((e) => {
+    const rect = trackRef.current.getBoundingClientRect();
+    const x = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    return x * duration;
+  }, [duration]);
+
+  const onTrackMove = (e) => {
+    if (!trackRef.current) return;
+    const t = timeFromEvent(e);
+    if (dragging) onSeek(t); else onHover(t);
+  };
+
+  const onTrackLeave = () => { if (!dragging) onHover(null); };
+
+  const onTrackDown = (e) => {
+    setDragging(true);
+    const t = timeFromEvent(e);
+    onSeek(t);
+    onHover(null);
+  };
+
+  React.useEffect(() => {
+    if (!dragging) return;
+    const onUp = () => setDragging(false);
+    const onMove = (e) => {
+      if (!trackRef.current) return;
+      const t = timeFromEvent(e);
+      onSeek(t);
+    };
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('mousemove', onMove);
+    return () => {
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('mousemove', onMove);
+    };
+  }, [dragging, timeFromEvent, onSeek]);
+
+  const pct = duration > 0 ? (time / duration) * 100 : 0;
+  const fmt = (t) => {
+    const total = Math.max(0, t);
+    const m = Math.floor(total / 60);
+    const s = Math.floor(total % 60);
+    const cs = Math.floor((total * 100) % 100);
+    return `${String(m).padStart(1, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+  };
+
+  const mono = 'JetBrains Mono, ui-monospace, SFMono-Regular, monospace';
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '8px 16px',
+      background: 'rgba(20,20,20,0.92)',
+      borderTop: '1px solid rgba(255,255,255,0.08)',
+      width: '100%',
+      maxWidth: 680,
+      alignSelf: 'center',
+      borderRadius: 8,
+      color: '#f6f4ef',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      userSelect: 'none',
+      flexShrink: 0,
+    }}>
+      <IconButton onClick={onReset} title="Return to start (0)">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 2v10M12 2L5 7l7 5V2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+        </svg>
+      </IconButton>
+      <IconButton onClick={onPlayPause} title="Play/pause (space)">
+        {playing ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="3" y="2" width="3" height="10" fill="currentColor"/>
+            <rect x="8" y="2" width="3" height="10" fill="currentColor"/>
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 2l9 5-9 5V2z" fill="currentColor"/>
+          </svg>
+        )}
+      </IconButton>
+
+      <div style={{
+        fontFamily: mono, fontSize: 12, fontVariantNumeric: 'tabular-nums',
+        width: 64, textAlign: 'right', color: '#f6f4ef',
+      }}>
+        {fmt(time)}
+      </div>
+
+      <div
+        ref={trackRef}
+        onMouseMove={onTrackMove}
+        onMouseLeave={onTrackLeave}
+        onMouseDown={onTrackDown}
+        style={{
+          flex: 1, height: 22, position: 'relative', cursor: 'pointer',
+          display: 'flex', alignItems: 'center',
+        }}
+      >
+        <div style={{
+          position: 'absolute', left: 0, right: 0, height: 4,
+          background: 'rgba(255,255,255,0.12)', borderRadius: 2,
+        }}/>
+        <div style={{
+          position: 'absolute', left: 0, width: `${pct}%`, height: 4,
+          background: 'oklch(72% 0.12 250)', borderRadius: 2,
+        }}/>
+        <div style={{
+          position: 'absolute', left: `${pct}%`, top: '50%',
+          width: 12, height: 12, marginLeft: -6, marginTop: -6,
+          background: '#fff', borderRadius: 6,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+        }}/>
+      </div>
+
+      <div style={{
+        fontFamily: mono, fontSize: 12, fontVariantNumeric: 'tabular-nums',
+        width: 64, textAlign: 'left', color: 'rgba(246,244,239,0.55)',
+      }}>
+        {fmt(duration)}
+      </div>
+    </div>
+  );
+}
+
+function IconButton({ children, onClick, title }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        width: 28, height: 28,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: hover ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 6,
+        color: '#f6f4ef',
+        cursor: 'pointer',
+        padding: 0,
+        transition: 'background 120ms',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// invite-scene-v2.jsx — NC26 Video Invitation v2 (Kraft / editorial)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VW = 1080;
+const VH = 1920;
+
+const C = {
+  bg: "#EFEAE0",
+  card: "#F4EFE2",
+  ink: "#111111",
+  inkSoft: "#3F3A30",
+  inkFaint: "#7A7064",
+  accent: "#C8102E",
+};
+
+const F = '"Archivo", "Helvetica Neue", Helvetica, sans-serif';
+const F_KR = '"Pretendard Variable", "Gowun Dodum", sans-serif';
+const F_KR_SERIF = '"Gowun Batang", "Pretendard Variable", serif';
+const F_MONO = '"JetBrains Mono", ui-monospace, monospace';
+
+const SLIDES = [
+  { id: "hero", at: 2.6,  dur: 2.8 },
+  { id: "s1",   at: 5.4,  dur: 2.4 },
+  { id: "s2",   at: 7.8,  dur: 2.6 },
+  { id: "s3",   at: 10.4, dur: 2.6 },
+  { id: "s4",   at: 13.0, dur: 3.0 },
+  { id: "s5",   at: 16.0, dur: 2.8 },
+];
+const DUR = 19.0;
+
+/* ─────────── BG ─────────── */
+const Background = () => (
+  <div style={{ position: "absolute", inset: 0, background: C.bg, overflow: "hidden" }}>
+    <svg viewBox="0 0 1080 1920" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+      <defs>
+        <radialGradient id="vig" cx="50%" cy="40%" r="80%">
+          <stop offset="0%" stopColor="#FAF6EC" stopOpacity="1" />
+          <stop offset="100%" stopColor="#D9D2C0" stopOpacity="0.55" />
+        </radialGradient>
+        <filter id="bgGrain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
+          <feColorMatrix values="0 0 0 0 0.15  0 0 0 0 0.13  0 0 0 0 0.10  0 0 0 0.08 0" />
+        </filter>
+      </defs>
+      <rect width="1080" height="1920" fill="url(#vig)" />
+      <rect width="1080" height="1920" filter="url(#bgGrain)" opacity="0.55" />
+    </svg>
+  </div>
+);
+
+/* ─────────── ENVELOPE ─────────── */
+const Envelope = () => {
+  const t = useTime();
+  const p = clamp(t / 0.8, 0, 1);
+  const e = Easing.easeOutCubic(p);
+  const w = 920, h = 760;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: (VW - w) / 2,
+        top: 960,
+        width: w, height: h,
+        transform: `translateY(${(1 - e) * 80}px)`,
+        opacity: p,
+        filter: "drop-shadow(0 50px 80px rgba(60, 40, 20, 0.22))",
+        zIndex: 1,
+      }}
+    >
+      <svg viewBox="0 0 920 760" style={{ width: "100%", height: "100%", display: "block" }}>
+        <defs>
+          <linearGradient id="kBody" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#D4B387" />
+            <stop offset="55%" stopColor="#C8A678" />
+            <stop offset="100%" stopColor="#B7945F" />
+          </linearGradient>
+          <linearGradient id="kFront" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#C9A576" />
+            <stop offset="100%" stopColor="#A88254" />
+          </linearGradient>
+          <pattern id="kRibs" patternUnits="userSpaceOnUse" width="6" height="6">
+            <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(90,60,30,0.10)" strokeWidth="1" />
+            <line x1="3" y1="0" x2="3" y2="6" stroke="rgba(255,240,220,0.06)" strokeWidth="1" />
+          </pattern>
+          <filter id="kGrain">
+            <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" stitchTiles="stitch" />
+            <feColorMatrix values="0 0 0 0 0.30  0 0 0 0 0.20  0 0 0 0 0.10  0 0 0 0.16 0" />
+          </filter>
+        </defs>
+        <rect x="10" y="0" width="900" height="760" rx="14" fill="url(#kBody)" />
+        <rect x="10" y="0" width="900" height="760" rx="14" fill="url(#kRibs)" />
+        <rect x="10" y="0" width="900" height="760" rx="14" filter="url(#kGrain)" opacity="0.7" />
+        <path d="M 10 760 L 460 250 L 910 760 Z" fill="url(#kFront)" />
+        <path d="M 10 760 L 460 250 L 910 760 Z" fill="url(#kRibs)" opacity="0.85" />
+        <path d="M 10 760 L 460 250 L 910 760 Z" filter="url(#kGrain)" opacity="0.6" />
+        <path d="M 10 760 L 460 250 L 910 760" fill="none" stroke="rgba(60,35,10,0.18)" strokeWidth="1.5" />
+        <line x1="10" y1="760" x2="460" y2="252" stroke="rgba(255,240,210,0.25)" strokeWidth="1" />
+        <line x1="910" y1="760" x2="460" y2="252" stroke="rgba(255,240,210,0.25)" strokeWidth="1" />
+        <image href="assets/bni-logo.png" x="330" y="570" width="260" height="95" preserveAspectRatio="xMidYMid meet" />
+      </svg>
+    </div>
+  );
+};
+
+/* ─────────── CARD CHROME ─────────── */
+const CARD_W = 760;
+const CARD_H = 1180;
+const CARD_LEFT = (VW - CARD_W) / 2;
+const CARD_TOP_HIDDEN = 1340;
+const CARD_TOP_REST = 230;
+
+const Card = ({ children }) => {
+  const t = useTime();
+  const p = clamp((t - 0.7) / 2.0, 0, 1);
+  const e = Easing.easeOutCubic(p);
+  const top = CARD_TOP_HIDDEN + (CARD_TOP_REST - CARD_TOP_HIDDEN) * e;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: CARD_LEFT, top,
+        width: CARD_W, height: CARD_H,
+        background: C.card,
+        borderRadius: 26,
+        boxShadow: "0 30px 50px rgba(60,40,20,0.18), 0 6px 14px rgba(60,40,20,0.08), inset 0 0 0 1px rgba(0,0,0,0.04)",
+        overflow: "hidden",
+        zIndex: 5,
+      }}
+    >
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.55, pointerEvents: "none" }}>
+        <defs>
+          <filter id="cardG">
+            <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" stitchTiles="stitch" />
+            <feColorMatrix values="0 0 0 0 0.32  0 0 0 0 0.28  0 0 0 0 0.20  0 0 0 0.18 0" />
+          </filter>
+        </defs>
+        <rect width="100%" height="100%" filter="url(#cardG)" />
+      </svg>
+      {children}
+    </div>
+  );
+};
+
+/* ─────────── SLIDE WRAPPER (crossfade) ─────────── */
+const SlideFrame = ({ at, dur, children }) => {
+  const t = useTime();
+  const fade = 0.35;
+  if (t < at - fade || t > at + dur + fade) return null;
+  let opacity;
+  if (t < at) opacity = (t - (at - fade)) / fade;
+  else if (t > at + dur) opacity = 1 - (t - (at + dur)) / fade;
+  else opacity = 1;
+  opacity = clamp(opacity, 0, 1);
+  const ty = (1 - opacity) * 18;
+  return (
+    <div
+      style={{
+        position: "absolute", inset: 0,
+        padding: "70px 60px 64px",
+        display: "flex", flexDirection: "column",
+        fontFamily: F, color: C.ink,
+        opacity, transform: `translateY(${ty}px)`,
+      }}
+    >
+      {children}
+    </div>
+  );
+};
+
+const HR = ({ mt = 18, mb = 18 }) => (
+  <div style={{ height: 2, background: C.ink, marginTop: mt, marginBottom: mb }} />
+);
+
+const TopRow = ({ left, right }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div style={{ fontFamily: F_MONO, fontSize: 17, letterSpacing: "0.24em", textTransform: "uppercase", color: C.ink, marginTop: 4 }}>
+      {left}
+    </div>
+    <div style={{ fontFamily: F_MONO, fontSize: 17, letterSpacing: "0.24em", textTransform: "uppercase", color: C.inkSoft, marginTop: 4 }}>
+      {right}
+    </div>
+  </div>
+);
+
+/* ─────────── QR ─────────── */
+const QR = ({ value, size = 220, fg = "#111111", bg = "#F4EFE2", padding = 10, ecLevel = "M" }) => {
+  const qr = window.qrcode(0, ecLevel);
+  qr.addData(value);
+  qr.make();
+  const count = qr.getModuleCount();
+  const cell = (size - padding * 2) / count;
+  const rects = [];
+  for (let r = 0; r < count; r++) {
+    for (let c = 0; c < count; c++) {
+      if (qr.isDark(r, c)) {
+        rects.push(
+          <rect key={`${r}-${c}`} x={padding + c * cell} y={padding + r * cell} width={cell + 0.5} height={cell + 0.5} fill={fg} />
+        );
+      }
+    }
+  }
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block", borderRadius: 8 }}>
+      <rect width={size} height={size} fill={bg} rx="8" />
+      {rects}
+    </svg>
+  );
+};
+
+const QRBlock = ({ size = 220, value = "https://www.nc26-bnikorea.com", ecLevel = "M", caption = "nc26-bnikorea.com", subcaption = "✨ 스캔해 바로 등록", align = "center", style }) => (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: align === "center" ? "center" : align === "end" ? "flex-end" : "flex-start", gap: 8, ...style }}>
+    <div style={{ background: "#FFFFFF", padding: 12, borderRadius: 12, boxShadow: "0 6px 18px rgba(40,28,12,0.10), 0 1px 3px rgba(40,28,12,0.08)" }}>
+      <QR value={value} size={size} fg="#111111" bg="#FFFFFF" padding={Math.max(8, size * 0.06)} ecLevel={ecLevel} />
+    </div>
+    {caption && <div style={{ textAlign: align, fontFamily: F_MONO, fontSize: 13, letterSpacing: "0.16em", color: C.ink, textTransform: "uppercase", marginTop: 4 }}>
+      ▶ {caption}
+    </div>}
+    {subcaption && <div style={{ textAlign: align, fontFamily: F_KR, fontSize: 14, color: C.inkSoft, marginTop: -2 }}>{subcaption}</div>}
+  </div>
+);
+
+/* ─────────── SLIDES ─────────── */
+const SlideHero = () => (
+  <SlideFrame at={SLIDES[0].at} dur={SLIDES[0].dur}>
+    <TopRow left="HERO" right="NC26 · 초대장" />
+    <HR mt={14} mb={28} />
+    <div style={{ fontFamily: F_KR, fontWeight: 700, fontSize: 56, lineHeight: 1.18, letterSpacing: "-0.02em" }}>
+      올해, 한국 비즈니스가<br />한 자리에 모인다.
+    </div>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <QRBlock size={240} />
+    </div>
+    <div style={{ fontFamily: F, fontWeight: 900, fontSize: 82, lineHeight: 0.92, letterSpacing: "-0.04em" }}>
+      2026<br />BNI KOREA
+    </div>
+    <div style={{ fontFamily: F, fontWeight: 800, fontSize: 32, letterSpacing: "0.04em", marginTop: 14 }}>
+      NATIONAL CONFERENCE
+    </div>
+    <HR mt={28} mb={20} />
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div>
+        <div style={{ fontFamily: F_MONO, fontSize: 14, letterSpacing: "0.18em", color: C.inkSoft }}>WHEN</div>
+        <div style={{ fontFamily: F, fontWeight: 800, fontSize: 26, marginTop: 4 }}>2026. 6. 1. MON</div>
+      </div>
+      <div>
+        <div style={{ fontFamily: F_MONO, fontSize: 14, letterSpacing: "0.18em", color: C.inkSoft }}>WHERE</div>
+        <div style={{ fontFamily: F, fontWeight: 800, fontSize: 26, marginTop: 4 }}>Swiss Grand Hotel,<br />Seoul</div>
+      </div>
+    </div>
+    <div style={{ marginTop: 28, fontFamily: F_KR_SERIF, fontWeight: 700, fontStyle: "italic", fontSize: 28, color: C.accent }}>
+      지금, 당신의 차례입니다.
+    </div>
+  </SlideFrame>
+);
+
+const Slide1 = () => (
+  <SlideFrame at={SLIDES[1].at} dur={SLIDES[1].dur}>
+    <TopRow left="01 · HEADLINE" right="WHY NC26" />
+    <HR mt={14} mb={36} />
+    <div style={{ fontFamily: F_KR, fontWeight: 800, fontSize: 70, lineHeight: 1.15, letterSpacing: "-0.03em", color: C.ink }}>
+      연결이 곧,<br />
+      <span style={{ color: C.accent }}>매출</span>이 되는<br />하루.
+    </div>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <QRBlock size={280} />
+    </div>
+    <div style={{ fontFamily: F_KR, fontSize: 24, lineHeight: 1.5, color: C.inkSoft, borderLeft: `3px solid ${C.ink}`, paddingLeft: 18 }}>
+      한 번의 만남이,<br />1년의 비즈니스를 바꾼다.
+    </div>
+    <HR mt={28} mb={14} />
+    <div style={{ fontFamily: F, fontWeight: 800, fontSize: 22, letterSpacing: "0.04em" }}>
+      2026, THE STRONGEST<br />BUSINESS NETWORK OPENS.
+    </div>
+  </SlideFrame>
+);
+
+const Slide2 = () => (
+  <SlideFrame at={SLIDES[2].at} dur={SLIDES[2].dur}>
+    <TopRow left="02 · WHO" right="초대 대상" />
+    <HR mt={14} mb={36} />
+    <div style={{ fontFamily: F_KR, fontWeight: 800, fontSize: 70, lineHeight: 1.18, letterSpacing: "-0.03em" }}>
+      이 자리를 놓치면<br />안되는 분들 <span style={{ color: C.accent }}>!</span>
+    </div>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 28, marginTop: 24 }}>
+      {[
+        ["01", "성장에 진심인", "비즈니스 오너 · 대표"],
+        ["02", "자기 분야의", "전문가"],
+        ["03", "BNI를 처음 마주하는", "예비 멤버 · 파트너 후보"],
+      ].map(([n, l1, l2]) => (
+        <div key={n} style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 22, alignItems: "baseline", borderBottom: "1px solid rgba(0,0,0,0.18)", paddingBottom: 24 }}>
+          <div style={{ fontFamily: F, fontWeight: 900, fontSize: 80, lineHeight: 1, color: C.ink, letterSpacing: "-0.03em" }}>{n}</div>
+          <div>
+            <div style={{ fontFamily: F_KR, fontSize: 30, color: C.inkSoft, lineHeight: 1.3 }}>{l1}</div>
+            <div style={{ fontFamily: F_KR, fontWeight: 800, fontSize: 48, color: C.ink, marginTop: 6, lineHeight: 1.15, letterSpacing: "-0.01em" }}>{l2}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </SlideFrame>
+);
+
+const Slide3 = () => (
+  <SlideFrame at={SLIDES[3].at} dur={SLIDES[3].dur}>
+    <TopRow left="03 · WHEN & WHERE" right="DAY 01" />
+    <HR mt={14} mb={20} />
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+      <div style={{ fontFamily: F, fontWeight: 900, fontSize: 188, lineHeight: 0.85, letterSpacing: "-0.04em" }}>
+        06<br />01
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", marginTop: 6, gap: 8 }}>
+        <QRBlock size={150} subcaption={null} caption="등록" />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+          <svg viewBox="0 0 32 32" width="40" height="40">
+            <circle cx="16" cy="16" r="14" fill="none" stroke={C.ink} strokeWidth="2" />
+            <line x1="16" y1="16" x2="16" y2="8" stroke={C.ink} strokeWidth="2" strokeLinecap="round" />
+            <line x1="16" y1="16" x2="22" y2="18" stroke={C.ink} strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          <div style={{ fontFamily: F, fontWeight: 800, fontSize: 24, letterSpacing: "0.04em" }}>MON</div>
+        </div>
+      </div>
+    </div>
+    <HR mt={20} mb={16} />
+    <div style={{ fontFamily: F_KR, fontSize: 42, fontWeight: 800, color: C.accent, lineHeight: 1.25, letterSpacing: "-0.02em" }}>
+      2026. 6. 1. (월) — <strong>DAY 1</strong>
+    </div>
+    <div style={{ fontFamily: F_KR, fontSize: 28, fontWeight: 600, color: C.accent, marginTop: 6 }}>
+      비지터 참석 권장일
+    </div>
+    <div style={{ flex: 1 }} />
+    <div style={{ width: "100%", height: 240, borderRadius: 14, overflow: "hidden", marginBottom: 18, boxShadow: "0 6px 16px rgba(40,28,12,0.12)" }}>
+      <img src="assets/swiss-grand.png" alt="Swiss Grand Hotel" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+    </div>
+    <div style={{ fontFamily: F_MONO, fontSize: 14, letterSpacing: "0.2em", color: C.inkSoft, textTransform: "uppercase" }}>VENUE</div>
+    <div style={{ fontFamily: F, fontWeight: 900, fontSize: 44, lineHeight: 1.05, letterSpacing: "-0.02em", marginTop: 6 }}>
+      Swiss Grand<br />Hotel, Seoul
+    </div>
+    <div style={{ fontFamily: F_KR, fontSize: 20, color: C.inkSoft, marginTop: 6 }}>스위스 그랜드 호텔 서울</div>
+  </SlideFrame>
+);
+
+const Slide4 = () => (
+  <SlideFrame at={SLIDES[4].at} dur={SLIDES[4].dur}>
+    <TopRow left="04 · HOW TO JOIN" right="3 STEPS" />
+    <HR mt={14} mb={28} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {[
+        ["STEP 1", "랜딩 페이지 접속"],
+        ["STEP 2", "등록 완료"],
+        ["STEP 3", "행사 당일, 지정된 시간에 입장"],
+      ].map(([s, l], i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 18, alignItems: "center", padding: "18px 0", borderBottom: "1px solid rgba(0,0,0,0.18)" }}>
+          <div style={{ fontFamily: F, fontWeight: 900, fontSize: 32, letterSpacing: "0.08em", color: C.accent }}>{s}</div>
+          <div style={{ fontFamily: F_KR, fontWeight: 700, fontSize: 40, color: C.ink, letterSpacing: "-0.01em" }}>{l}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{ marginTop: 36, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ background: "rgba(17,17,17,0.06)", borderRadius: 16, padding: "22px 26px", display: "flex", alignItems: "center", gap: 22 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: F_MONO, fontSize: 18, letterSpacing: "0.18em", color: C.inkSoft, textTransform: "uppercase" }}>🏨 HOTEL</div>
+          <div style={{ fontFamily: F_KR, fontSize: 26, fontWeight: 500, marginTop: 8, color: C.ink, lineHeight: 1.4 }}>
+            숙박이 필요하다면?<br />랜딩 페이지 내 <strong>호텔 예약</strong> 버튼.
+          </div>
+        </div>
+        <QRBlock
+          size={200}
+          value="https://www.book-secure.com/index.php?s=results&property=krseo31637&arrival=2026-05-30&departure=2026-05-31&code=BN0530&AccessCode=BN0530"
+          ecLevel="L"
+          caption={null}
+          subcaption={null}
+        />
+      </div>
+      <div style={{ background: "rgba(17,17,17,0.06)", borderRadius: 16, padding: "22px 26px", display: "flex", alignItems: "center", gap: 22 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: F_MONO, fontSize: 18, letterSpacing: "0.18em", color: C.inkSoft, textTransform: "uppercase" }}>🪧 BOOTH</div>
+          <div style={{ fontFamily: F_KR, fontSize: 26, fontWeight: 500, marginTop: 8, color: C.ink, lineHeight: 1.4 }}>
+            내 비즈니스를 알리고 싶다면?<br />랜딩 페이지에서 <strong>부스 신청</strong>까지.
+          </div>
+        </div>
+        <QRBlock
+          size={170}
+          value="https://www.nc26-bnikorea.com/ticket"
+          ecLevel="M"
+          caption={null}
+          subcaption={null}
+        />
+      </div>
+    </div>
+  </SlideFrame>
+);
+
+const Slide5 = () => (
+  <SlideFrame at={SLIDES[5].at} dur={SLIDES[5].dur}>
+    <TopRow left="05 · NOW" right="" />
+    <HR mt={14} mb={36} />
+    <div style={{ fontFamily: F_KR, fontWeight: 800, fontSize: 78, lineHeight: 1.12, letterSpacing: "-0.03em" }}>
+      관망할 것인가,
+    </div>
+    <div style={{ fontFamily: F_KR, fontWeight: 800, fontSize: 78, lineHeight: 1.12, letterSpacing: "-0.03em", color: C.accent }}>
+      연결될 것인가.
+    </div>
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <QRBlock size={280} caption={null} subcaption={null} />
+    </div>
+    <div style={{ background: C.ink, color: C.card, borderRadius: 22, padding: "32px 36px", textAlign: "center" }}>
+      <div style={{ fontFamily: F_MONO, fontSize: 18, letterSpacing: "0.22em", textTransform: "uppercase", opacity: 0.7 }}>
+        ▶ 지금 등록하기
+      </div>
+      <div style={{ fontFamily: F, fontWeight: 900, fontSize: 46, marginTop: 12, letterSpacing: "-0.01em", wordBreak: "break-all" }}>
+        nc26-bnikorea.com
+      </div>
+      <div style={{ fontFamily: F_KR, fontSize: 22, fontWeight: 500, marginTop: 14, opacity: 0.75, letterSpacing: "0.02em" }}>
+        QR을 스캔해 바로 등록
+      </div>
+    </div>
+    <div style={{ marginTop: 18, fontFamily: F_KR, fontSize: 20, color: C.inkSoft, textAlign: "center" }}>
+      2026. 6. 1. (월) · Swiss Grand Hotel, Seoul
+    </div>
+  </SlideFrame>
+);
+
+/* ─────────── PROGRESS DOTS ─────────── */
+const Dots = () => {
+  const t = useTime();
+  if (t < SLIDES[0].at - 0.5) return null;
+  let activeIdx = 0;
+  for (let i = 0; i < SLIDES.length; i++) {
+    if (t >= SLIDES[i].at - 0.2 && t < SLIDES[i].at + SLIDES[i].dur) { activeIdx = i; break; }
+    if (t >= SLIDES[i].at + SLIDES[i].dur) activeIdx = i;
+  }
+  return (
+    <div style={{ position: "absolute", left: 0, right: 0, top: 80, display: "flex", justifyContent: "center", gap: 10, zIndex: 20 }}>
+      {SLIDES.map((s, i) => (
+        <div
+          key={s.id}
+          style={{
+            width: i === activeIdx ? 36 : 10,
+            height: 6,
+            borderRadius: 3,
+            background: i <= activeIdx ? C.ink : "rgba(17,17,17,0.2)",
+            transition: "all 0.3s",
+          }}
+        />
+      ))}
+    </div>
+  );
+};
+
+const TopLabel = () => {
+  const t = useTime();
+  if (t < 0.4) return null;
+  const p = clamp((t - 0.4) / 0.5, 0, 1);
+  return (
+    <div
+      style={{
+        position: "absolute", top: 130, left: 0, right: 0, textAlign: "center",
+        opacity: p, transform: `translateY(${(1 - p) * 8}px)`,
+        fontFamily: F_MONO, fontSize: 32, fontWeight: 500, letterSpacing: "0.32em",
+        color: C.ink, textTransform: "uppercase", zIndex: 10,
+      }}
+    >
+      You're invited <span style={{ opacity: 0.4 }}>·</span> 초대장
+    </div>
+  );
+};
+
+/* ─────────── SCENE ─────────── */
+const Scene = () => (
+  <>
+    <Background />
+    <TopLabel />
+    <Dots />
+    <Envelope />
+    <Card>
+      <SlideHero />
+      <Slide1 />
+      <Slide2 />
+      <Slide3 />
+      <Slide4 />
+      <Slide5 />
+    </Card>
+  </>
+);
+
+const App = () => (
+  <Stage width={VW} height={VH} duration={DUR} background={C.bg} persistKey="nc26-invite-v2">
+    <Scene />
+  </Stage>
+);
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
